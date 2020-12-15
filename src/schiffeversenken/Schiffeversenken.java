@@ -27,7 +27,7 @@ public interface Schiffeversenken {
      * @return string with the parameters
      */
 
-    String placeShip(Side side, ShipType type, SchiffeversenkenBoardPosition position) throws BadPlacementException, StatusException;
+    String placeShip(Side side, ShipType type, SchiffeversenkenBoardPosition position) throws BadPlacementException, StatusException, GameException;
 
     /**
      * attack a position on the board

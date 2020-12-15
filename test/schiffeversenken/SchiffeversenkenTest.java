@@ -128,7 +128,7 @@ public class SchiffeversenkenTest {
         Assert.assertEquals("Anchor was placed at: j9", res);
     }
     @Test(expected = StatusException.class)
-    public void failureStatus1() throws StatusException, BadPlacementException {
+    public void failureStatus1() throws StatusException, BadPlacementException, GameException {
         Schiffeversenken sv = getSchiffeversenken();
         SchiffeversenkenBoardPosition position = new SchiffeversenkenBoardPosition("i", 10, false);
         String res = sv.placeShip(Side.Player_1, ShipType.cruiser, position);
