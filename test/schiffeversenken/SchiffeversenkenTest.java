@@ -11,6 +11,7 @@ public class SchiffeversenkenTest {
     private Schiffeversenken getSchiffeversenken() {
         return new SchiffeversenkenImpl();
     }
+
     @Test
     public void goodChoose1() throws NameException, StatusException, GameException {
         Schiffeversenken sv = getSchiffeversenken();
@@ -23,9 +24,8 @@ public class SchiffeversenkenTest {
         Side aliceChoose = sv.chooseSide(NAME1);
         Side bobChoose = sv.chooseSide(NAME2);
     }
-
     @Test
-    public void goodChoose5() throws NameException, StatusException, GameException {
+    public void goodChoose3() throws NameException, StatusException, GameException {
         Schiffeversenken sv = getSchiffeversenken();
         Side bobChoose = sv.chooseSide(NAME2); //reconsidered
         bobChoose = sv.chooseSide(NAME2);

@@ -1,22 +1,37 @@
 package schiffeversenken;
 
+import network.TCPStream;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 
 public class ProtocollEngineTest {
     public static final String NAME1 = "Alice";
     public static final Side PLAER_ONE = Side.Player_1;
     public static final ShipType CRUISER = ShipType.cruiser;
+    public static final int PORTNUMBER = 5555;
+    private static final String BOB = "Bob";
+    private static int port = 0;
+    public static final long TEST_THREAD_SLEEP_DURATION = 1000;
 
 
     private Schiffeversenken getProtokollEngine(InputStream is, OutputStream os, Schiffeversenken gameEngine) {
         return new SchiffeversenkenProtocollEngine(is, os, gameEngine);
     }
+    private int getPortNumber() {
+        if(ProtocollEngineTest.port == 0) {
+            ProtocollEngineTest.port = PORTNUMBER;
+        } else {
+            ProtocollEngineTest.port++;
+        }
+
+        System.out.println("use portnumber " + ProtocollEngineTest.port);
+        return ProtocollEngineTest.port;
+    }
+
+    /*
+    does not work any longer
     @Test
     public void pickTest1() throws GameException, StatusException, NameException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -37,7 +52,7 @@ public class ProtocollEngineTest {
 
         Assert.assertTrue(receiver.lastCallChoose);
         Assert.assertTrue(receiver.userName.equalsIgnoreCase(NAME1));
-        Assert.assertTrue(receiver.side == Side.Player_1);
+        Assert.assertSame(receiver.side, Side.Player_1);
     }
 
     @Test
@@ -61,12 +76,70 @@ public class ProtocollEngineTest {
 
         Assert.assertTrue(receiver.lastCallPlace);
         Assert.assertTrue(receiver.sCoord.equalsIgnoreCase(position.getsCoordinate()));
-        Assert.assertTrue(receiver.iCoord == position.getiCoordinate());
-        Assert.assertTrue(receiver.sideways == position.getSideways());
-        Assert.assertTrue(receiver.type == ShipType.cruiser);
-        Assert.assertTrue(receiver.side == Side.Player_1);
+        Assert.assertEquals(receiver.iCoord, position.getiCoordinate());
+        Assert.assertEquals(receiver.sideways, position.getSideways());
+        Assert.assertSame(receiver.type, ShipType.cruiser);
+        Assert.assertSame(receiver.side, Side.Player_1);
     }
-
+     */
+    @Test
+    public void pickNetworkTest() throws GameException, StatusException, IOException, InterruptedException, NameException {
+        // there are players in this test: Alice and Bob
+        // create Alice's game engine tester
+        SchiffeversenkenReadTester aliceGameEngineTester = new SchiffeversenkenReadTester();
+        // create real protocol engine on Alice's side
+        SchiffeversenkenProtocollEngine aliceTicTacToeProtocolEngine = new SchiffeversenkenProtocollEngine(aliceGameEngineTester);
+        // make it clear - this is a protocol engine
+        SchiffeversenkenProtocollEngine aliceProtocolEngine = aliceTicTacToeProtocolEngine;
+        // make it clear - it also supports the game engine interface
+        Schiffeversenken aliceGameEngineSide = aliceTicTacToeProtocolEngine;
+        // create Bob's game engine tester
+        SchiffeversenkenReadTester bobGameEngineTester = new SchiffeversenkenReadTester();
+        // create real protocol engine on Bob's side
+        SchiffeversenkenProtocollEngine bobProtocolEngine = new SchiffeversenkenProtocollEngine(bobGameEngineTester);
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        //                                           setup tcp                                                    //
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        int port = this.getPortNumber();
+        // this stream plays TCP server role during connection establishment
+        TCPStream aliceSide = new TCPStream(port, true, "aliceSide");
+        // this stream plays TCP client role during connection establishment
+        TCPStream bobSide = new TCPStream(port, false, "bobSide");
+        // start both stream
+        aliceSide.start(); bobSide.start();
+        // wait until TCP connection is established
+        aliceSide.waitForConnection(); bobSide.waitForConnection();
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        //                                       launch protocol engine                                           //
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // give protocol engines streams and launch
+        aliceProtocolEngine.handleConnection(aliceSide.getInputStream(), aliceSide.getOutputStream());
+        bobProtocolEngine.handleConnection(bobSide.getInputStream(), bobSide.getOutputStream());
+        // give it a moment - important stop this test thread - to threads must be launched
+        System.out.println("give threads a moment to be launched");
+        Thread.sleep(TEST_THREAD_SLEEP_DURATION);
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        //                                             run scenario                                               //
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // connection is established here - pick thread waits for results
+        Side alicePickResult = aliceGameEngineSide.chooseSide(NAME1);
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        //                                             test results                                               //
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // Alice got here symbol
+        Assert.assertEquals(Side.Player_1, alicePickResult);
+        // pick("Alice", O) arrived on Bob's side
+        Assert.assertTrue(bobGameEngineTester.lastCallChoose);
+        Assert.assertTrue(bobGameEngineTester.userName.equalsIgnoreCase(NAME1));
+        Assert.assertEquals(Side.Player_1, bobGameEngineTester.side);
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        //                                             tidy up                                                    //
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        aliceProtocolEngine.close();
+        bobProtocolEngine.close();
+        // stop test thread to allow operating system to close sockets
+        Thread.sleep(TEST_THREAD_SLEEP_DURATION);
+    }
 
     private class SchiffeversenkenReadTester implements Schiffeversenken {
          private boolean lastCallChoose = false;
