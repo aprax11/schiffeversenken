@@ -1,9 +1,13 @@
 package schiffeversenken;
 
+import network.GameSessionEstablishedListener;
 import network.ProtocolEngine;
 
 import javax.imageio.IIOException;
 import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
 
 public class SchiffeversenkenProtocollEngine implements Schiffeversenken, Runnable, ProtocolEngine {
     private final int METHOD_CHOOSE = 0;
@@ -20,14 +24,22 @@ public class SchiffeversenkenProtocollEngine implements Schiffeversenken, Runnab
     private InputStream is;
     private final Schiffeversenken gameEngine;
 
+    private String playerName;
+    private String partnerName;
+
+    private static final String DEFAULT_NAME = "defaultName";
+
     private Thread protocolThread = null;
     private Thread pickWaitThreat = null;
 
+    boolean oracle = false;
 
-    public SchiffeversenkenProtocollEngine(InputStream is, OutputStream os, Schiffeversenken gameEngine) {
+
+    public SchiffeversenkenProtocollEngine(String playerName, InputStream is, OutputStream os, Schiffeversenken gameEngine) {
         this.os = os;
         this.is = is;
         this.gameEngine = gameEngine;
+        this.playerName = playerName;
     }
 
     public SchiffeversenkenProtocollEngine(Schiffeversenken gameEngine) {
@@ -112,12 +124,7 @@ public class SchiffeversenkenProtocollEngine implements Schiffeversenken, Runnab
     }
 
     @Override
-    public Ship[][] buildShips() {
-        return null;
-    }
-
-    @Override
-    public String placeShip(Side side, ShipType type, SchiffeversenkenBoardPosition position) throws BadPlacementException, StatusException, GameException {
+    public String placeShip(Side side, ShipType type, SchiffeversenkenBoardPosition position) throws GameException {
         DataOutputStream dos = new DataOutputStream(this.os);
 
         try{
@@ -184,7 +191,7 @@ public class SchiffeversenkenProtocollEngine implements Schiffeversenken, Runnab
         }
     }
     @Override
-    public AttackFeedback attack(Side side, SchiffeversenkenBoardPosition position) throws BadPlacementException, StatusException, GameException {
+    public AttackFeedback attack(Side side, SchiffeversenkenBoardPosition position) throws GameException {
         DataOutputStream dos = new DataOutputStream(this.os);
 
         try{
@@ -239,8 +246,7 @@ public class SchiffeversenkenProtocollEngine implements Schiffeversenken, Runnab
                 case METHOD_PLACE: this.deserializePlaceShip(); return  true;
                 case METHOD_ATTACK: this.deserializeAttack(); return  true;
                 case RESULT_CHOOSE: this.deserializeResultChoose(); return  true;
-                default:
-                    System.out.println("unknown method id: " + commandID); return false;
+                default: System.out.println("unknown method id: " + commandID); return false;
             }
         } catch (IOException | GameException e) {
             System.out.println("most likely connection close");
@@ -268,7 +274,48 @@ public class SchiffeversenkenProtocollEngine implements Schiffeversenken, Runnab
 
     @Override
     public void run() {
-        System.out.println("protocol engine started read");
+        System.out.println("protocol engine started - flip a coin");
+
+        long seed = this.hashCode() + System.currentTimeMillis();
+        Random random = new Random(seed);
+
+        int localInt = 0, remoteInt = 0;
+        try {
+            DataOutputStream dos = new DataOutputStream(this.os);
+            DataInputStream dis = new DataInputStream(this.is);
+            do {
+                localInt = random.nextInt();
+                System.out.println("flip and take a number " + localInt);
+                dos.writeInt(localInt);
+                remoteInt = dis.readInt();
+            } while (localInt == remoteInt);
+
+            this.oracle = localInt < remoteInt;
+            System.out.println("flipped coin an got a oracle == " + this.oracle);
+
+            //exchange names
+            dos.writeUTF(this.playerName);
+            this.partnerName = dis.readUTF();
+        } catch(IOException e) {
+            e.printStackTrace();
+        }
+
+        // call listener
+        if (this.sessionCreatedListenerList != null && !this.sessionCreatedListenerList.isEmpty()) {
+            for (GameSessionEstablishedListener oclistener : this.sessionCreatedListenerList) {
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            Thread.sleep(1); // block a moment to let read thread start - just in case
+                        } catch (InterruptedException e) {
+                            // will not happen
+                        }
+                        oclistener.gameSessionEstablished(oracle, partnerName);
+                    }
+                }).start();
+            }
+        }
 
         try {
             boolean again = true;
@@ -295,4 +342,19 @@ public class SchiffeversenkenProtocollEngine implements Schiffeversenken, Runnab
         if(this.os != null) { this.os.close();}
         if(this.is != null) { this.is.close();}
     }
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //                                         oracle creation listener                                      //
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private List<GameSessionEstablishedListener> sessionCreatedListenerList = new ArrayList<>();
+
+    @Override
+    public void subscribeGameSessionEstablishedListener(GameSessionEstablishedListener ocListener) {
+        this.sessionCreatedListenerList.add(ocListener);
+    }
+
+    @Override
+    public void unsubscribeGameSessionEstablishedListener(GameSessionEstablishedListener ocListener) {
+        this.sessionCreatedListenerList.remove(ocListener);
+    }
+
 }

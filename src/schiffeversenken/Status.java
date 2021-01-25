@@ -5,5 +5,6 @@ public enum Status {
     ONE_PICK,
     SETPHASE,
     WAIT_FOR_ENEMY,
-    ATTACKPHASE
+    ATTACKPHASE,
+    ENDED
 }

@@ -2,19 +2,12 @@ package schiffeversenken;
 
 public interface Schiffeversenken {
     /**
-     * chosing a player name
+     * choosing a player name
      * @param name the player name
      * @throws NameException name is already taken
      * @throws StatusException bad status
      */
     Side chooseSide(String name) throws NameException, StatusException, GameException;
-
-
-    /**
-     * builds the bucket with the pieces
-     * @return the bucket
-     */
-    Ship[][] buildShips();
 
     /**
      * places a ship on the board

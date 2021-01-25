@@ -1,17 +1,26 @@
 package schiffeversenken;
 
+import network.GameSessionEstablishedListener;
+
 import java.time.Year;
 import java.util.HashMap;
 import java.util.LinkedList;
 
-public class SchiffeversenkenImpl implements Schiffeversenken {
+public class SchiffeversenkenImpl implements Schiffeversenken, LocalBoard, GameSessionEstablishedListener {
     private  Status status = Status.START;
     private static HashMap<Side, String> player = new HashMap<>();
     private Ship[][][] board = this.buildBoard();
-    private Side takenSide = null;
+    private int playerHP = 14;
+
     LinkedList<SchiffeversenkenBoardPosition> hits = new LinkedList<>();
+    private String remotePlayerName;
+    private Side localSide;
+    private Side remoteSide;
+    private boolean localWon;
+    private SchiffeversenkenProtocollEngine protocolEngine;
 
-
+    public SchiffeversenkenImpl(String localPlayerName) {
+    }
 
     @Override
     public Side chooseSide(String name) throws NameException, StatusException, GameException {
@@ -19,23 +28,25 @@ public class SchiffeversenkenImpl implements Schiffeversenken {
         if(this.status != Status.START && this.status != Status.ONE_PICK) {
             throw new StatusException("pick call but wrong status");
         }
-        if(this.takenSide == null) {
+        Side takenSide = null;
+
+        if(takenSide == null) {
             player.put(Side.Player_1, name);
 
         }
         String playerName = player.get(Side.Player_1);
         if(playerName != null && playerName.equalsIgnoreCase(name)) {
-            this.takenSide = Side.Player_1;
+            takenSide = Side.Player_1;
             this.status = Status.ONE_PICK;
             return Side.Player_1;
         }
-        if(this.takenSide == Side.Player_1) {
+        if(takenSide == Side.Player_1) {
             player.put(Side.Player_2, name);
         }
         playerName = player.get(Side.Player_2);
         this.status = Status.SETPHASE;
         if(playerName != null && playerName.equalsIgnoreCase(name)) {
-            this.takenSide = Side.Player_2;
+            takenSide = Side.Player_2;
             return Side.Player_2;
         }
 
@@ -47,7 +58,7 @@ public class SchiffeversenkenImpl implements Schiffeversenken {
         return null;
     }
 
-    @Override
+   /*
     public Ship[][] buildShips(){
         Ship[][] bucket = new Ship[2][10];
 
@@ -64,6 +75,8 @@ public class SchiffeversenkenImpl implements Schiffeversenken {
         }
         return bucket;
     }
+    */
+
 
     @Override
     public String placeShip(Side side, ShipType type, SchiffeversenkenBoardPosition position) throws BadPlacementException, StatusException {
@@ -87,7 +100,7 @@ public class SchiffeversenkenImpl implements Schiffeversenken {
                 throw new BadPlacementException("Ship placed out of board.");
             }
         }
-        if(position.getSideways() == false) {
+        if(!position.getSideways()) {
             if (yCoord + ship.getHp() > 11) {
                 throw new BadPlacementException("Ship placed out of board.");
             }
@@ -143,7 +156,23 @@ public class SchiffeversenkenImpl implements Schiffeversenken {
             }
             this.hits.add(position);
             this.board[player][xCoord][yCoord].reduceHP();
+            this.protocolEngine.attack(side, position);
             if(this.board[player][xCoord][yCoord].getHp() == 0) {
+                int playerHpLoss = 0;
+                ShipType type = this.board[player][xCoord][yCoord].getType();
+                playerHpLoss = switch (type) {
+                    case aircraft_carrier -> 5;
+                    case cruiser -> 2;
+                    case submarine -> 3;
+                    case battleship -> 4;
+                };
+                this.playerHP -= playerHpLoss;
+                boolean hasLost = this.hasLostImp();
+                if(hasLost) {
+                    System.out.println(this.remotePlayerName + " has won!");
+                    this.status = Status.ENDED;
+                    this.localWon = false;
+                }
                 return AttackFeedback.destroyed;
             }else {
                 return AttackFeedback.hit;
@@ -151,7 +180,13 @@ public class SchiffeversenkenImpl implements Schiffeversenken {
         }else {
             return AttackFeedback.miss;
         }
+
     }
+
+    private boolean hasLostImp() {
+        return this.playerHP == 0;
+    }
+
     private Ship[][][] buildBoard() {
         Ship[][][] boardImpl = new Ship[2][10][10];
         for (int i = 0; i < 2; i++) {
@@ -187,5 +222,49 @@ public class SchiffeversenkenImpl implements Schiffeversenken {
             throw new BadPlacementException("Position out of board.");
         }
         return i - 1;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //                                       constructor helper                                             //
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    public void setProtocolEngine(SchiffeversenkenProtocollEngine protocolEngine) {
+        this.protocolEngine = protocolEngine;
+        this.protocolEngine.subscribeGameSessionEstablishedListener(this);
+    }
+
+    @Override
+    public Status getStatus() {
+        return this.status;
+    }
+
+    @Override
+    public boolean isActive() {
+        if(this.localSide == null) return false;
+
+        return (
+                (this.getStatus() == Status.ONE_PICK && this.localSide == Side.Player_1)
+                        ||
+                        (this.getStatus() == Status.ONE_PICK && this.localSide == Side.Player_2));
+    }
+
+    @Override
+    public boolean hasWon() {
+        return this.status == Status.ENDED && this.localWon;
+    }
+
+    @Override
+    public boolean hasLost() {
+        return this.status == Status.ENDED && !this.localWon;
+    }
+
+    @Override
+    public void subscribeChangeListener(LocalBoardChangeListener changeListener) {
+
+    }
+
+    @Override
+    public void gameSessionEstablished(boolean oracle, String partnerName) {
+
     }
 }
